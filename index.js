@@ -192,6 +192,14 @@ app.get("/logout", async (req, res) => {
 app.get("/check", (req, res) => {
     res.send("NEW CODE ACTIVE")
 })
+app.get("/clear", (req, res) => {
+    if (fs.existsSync("messages.txt")) {
+        fs.writeFileSync("messages.txt", "")
+        res.send("Messages cleared ✅")
+    } else {
+        res.send("No file found")
+    }
+})
 // 🚀 Start server
 app.listen(3000, () => {
     console.log("Server running on port 3000")
