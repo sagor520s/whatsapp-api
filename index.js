@@ -14,6 +14,26 @@ app.use(express.json())
 
 let sock = null
 
+// 🧠 message save with limit
+function saveMessage(text) {
+    let data = ""
+
+    if (fs.existsSync("messages.txt")) {
+        data = fs.readFileSync("messages.txt", "utf-8")
+    }
+
+    let lines = data.split("\n").filter(Boolean)
+
+    lines.push(text)
+
+    // 🔥 শুধু last 50 message রাখবে
+    if (lines.length > 50) {
+        lines = lines.slice(-50)
+    }
+
+    fs.writeFileSync("messages.txt", lines.join("\n") + "\n")
+}
+
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState("auth")
     const { version } = await fetchLatestBaileysVersion()
@@ -29,30 +49,21 @@ async function startBot() {
     sock.ev.on("connection.update", async (update) => {
         const { connection, qr, lastDisconnect } = update
 
-        // 📱 QR generate PNG
         if (qr) {
             console.log("QR received")
             await QRCode.toFile("qr.png", qr)
-            console.log("QR saved as qr.png")
         }
 
-        // ✅ Connected
         if (connection === "open") {
             console.log("✅ WhatsApp Connected")
-
-            if (fs.existsSync("qr.png")) {
-                fs.unlinkSync("qr.png")
-            }
+            if (fs.existsSync("qr.png")) fs.unlinkSync("qr.png")
         }
 
-        // 🔁 reconnect
         if (connection === "close") {
             const reason = lastDisconnect?.error?.output?.statusCode
-
             console.log("❌ Connection closed")
 
             if (reason !== DisconnectReason.loggedOut) {
-                console.log("🔁 Reconnecting in 5s...")
                 setTimeout(startBot, 5000)
             } else {
                 console.log("❌ Logged out")
@@ -60,28 +71,30 @@ async function startBot() {
         }
     })
 
-    // 📥 Incoming messages
+    // 📥 Incoming messages (FIXED LOOP)
     sock.ev.on("messages.upsert", async (m) => {
         try {
             const msg = m.messages[0]
             if (!msg.message) return
 
+            // ❗ LOOP FIX
+            if (msg.key.fromMe) return
+
             const sender = msg.key.remoteJid
             const text =
                 msg.message.conversation ||
-                msg.message.extendedTextMessage?.text
+                msg.message.extendedTextMessage?.text ||
+                "Media message"
 
-            console.log("📩 New Message:")
-            console.log("From:", sender)
-            console.log("Text:", text)
+            console.log("📩", sender, ":", text)
 
-            // 📝 Save message
-            fs.appendFileSync("messages.txt", `${sender} : ${text}\n`)
+            // 📝 Save (limited)
+            saveMessage(`${sender} : ${text}`)
 
-            // 🤖 Auto reply
-            await sock.sendMessage(sender, {
-                text: "Auto reply 🤖"
-            })
+            // 🤖 Smart auto reply (spam control)
+            if (text.toLowerCase() === "hi" || text.toLowerCase() === "hello") {
+                await sock.sendMessage(sender, { text: "Hello bro 👋" })
+            }
 
         } catch (err) {
             console.log(err)
@@ -91,21 +104,21 @@ async function startBot() {
 
 startBot()
 
-// 🌐 Home route
+// 🌐 Home
 app.get("/", (req, res) => {
     res.send("WhatsApp API Running ✅")
 })
 
-// 📱 QR route
+// 📱 QR
 app.get("/qr", (req, res) => {
     if (fs.existsSync("qr.png")) {
         res.sendFile(__dirname + "/qr.png")
     } else {
-        res.send("QR not ready or already scanned")
+        res.send("QR not ready")
     }
 })
 
-// 📩 Send text message
+// 📩 Send text
 app.post("/send", async (req, res) => {
     try {
         if (!sock || !sock.user) {
@@ -127,7 +140,6 @@ app.post("/send", async (req, res) => {
         res.json({ status: true, msg: "Message sent" })
 
     } catch (err) {
-        console.log(err)
         res.json({ status: false, error: err.message })
     }
 })
@@ -148,21 +160,19 @@ app.post("/send-doc", async (req, res) => {
         const jid = number + "@s.whatsapp.net"
 
         await sock.sendMessage(jid, {
-            document: { url: url },
+            document: { url },
             mimetype: "application/pdf",
             fileName: filename || "file.pdf"
-            
         })
 
         res.json({ status: true, msg: "Document sent" })
 
     } catch (err) {
-        console.log(err)
         res.json({ status: false, error: err.message })
     }
 })
 
-// 📜 View received messages
+// 📜 View messages
 app.get("/messages", (req, res) => {
     if (fs.existsSync("messages.txt")) {
         const data = fs.readFileSync("messages.txt", "utf-8")
@@ -172,35 +182,24 @@ app.get("/messages", (req, res) => {
     }
 })
 
-// 🔐 Logout route
-app.get("/logout", async (req, res) => {
-    try {
-        if (sock) {
-            await sock.logout()
-        }
-
-        if (fs.existsSync("auth")) {
-            fs.rmSync("auth", { recursive: true, force: true })
-        }
-
-        res.send("Logged out successfully. Restart service.")
-
-    } catch (err) {
-        res.send("Error: " + err.message)
-    }
+// 🧹 Clear messages
+app.get("/clear", (req, res) => {
+    fs.writeFileSync("messages.txt", "")
+    res.send("Messages cleared ✅")
 })
+
+// 🔐 Logout
+app.get("/logout", async (req, res) => {
+    if (sock) await sock.logout()
+    if (fs.existsSync("auth")) fs.rmSync("auth", { recursive: true, force: true })
+    res.send("Logged out")
+})
+
+// 🧪 Check
 app.get("/check", (req, res) => {
     res.send("NEW CODE ACTIVE")
 })
-app.get("/clear", (req, res) => {
-    if (fs.existsSync("messages.txt")) {
-        fs.writeFileSync("messages.txt", "")
-        res.send("Messages cleared ✅")
-    } else {
-        res.send("No file found")
-    }
-})
-// 🚀 Start server
+
 app.listen(3000, () => {
     console.log("Server running on port 3000")
 })
