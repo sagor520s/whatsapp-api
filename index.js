@@ -16,11 +16,11 @@ async function startBot() {
         const { connection, qr } = update
 
         if (qr) {
-            console.log("SCAN QR:", qr)
+            console.log("QR:", qr)
         }
 
         if (connection === "open") {
-            console.log("✅ WhatsApp Connected")
+            console.log("✅ Connected")
         }
     })
 }
@@ -28,9 +28,9 @@ async function startBot() {
 startBot()
 
 app.get("/", (req, res) => {
-    res.send("WhatsApp API Running")
+    res.send("Running")
 })
 
 app.listen(3000, () => {
-    console.log("Server running on port 3000")
+    console.log("Server running")
 })
