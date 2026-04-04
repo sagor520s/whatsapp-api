@@ -13,17 +13,19 @@ const app = express()
 app.use(express.json())
 
 let sock = null
-let started = false
-let sleepTimer = null
 let contacts = {}
+let sleepTimer = null // 🔥 added
 
-// 🧠 save message (limit 50)
+// 🧠 message save with limit
 function saveMessage(text) {
-    let data = fs.existsSync("messages.txt")
-        ? fs.readFileSync("messages.txt", "utf-8")
-        : ""
+    let data = ""
+
+    if (fs.existsSync("messages.txt")) {
+        data = fs.readFileSync("messages.txt", "utf-8")
+    }
 
     let lines = data.split("\n").filter(Boolean)
+
     lines.push(text)
 
     if (lines.length > 50) {
@@ -33,25 +35,41 @@ function saveMessage(text) {
     fs.writeFileSync("messages.txt", lines.join("\n") + "\n")
 }
 
-// 🚀 START BOT (on-demand)
-async function startBot() {
-    if (started) return
+// 😴 sleep system
+function resetSleepTimer() {
+    if (sleepTimer) clearTimeout(sleepTimer)
 
+    sleepTimer = setTimeout(() => {
+        console.log("😴 Sleeping...")
+
+        if (sock) {
+            try {
+                sock.ws.close()
+            } catch (e) {}
+        }
+
+        process.exit(0) // FULL STOP
+    }, 15000) // 15 sec idle
+}
+
+async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState("auth")
     const { version } = await fetchLatestBaileysVersion()
 
     sock = makeWASocket({
         version,
         auth: state,
-        browser: ["Railway", "Chrome", "1.0.0"],
-        logger: { level: "silent" } // 🔥 CPU save
+        browser: ["Railway", "Chrome", "1.0.0"]
     })
 
     sock.ev.on("creds.update", saveCreds)
 
+    // 🔥 contacts collect
     sock.ev.on("contacts.upsert", (data) => {
         data.forEach(c => {
-            if (c.id) contacts[c.id] = c.notify || c.name || c.id
+            if (c.id) {
+                contacts[c.id] = c.notify || c.name || c.id
+            }
         })
     })
 
@@ -63,73 +81,74 @@ async function startBot() {
         }
 
         if (connection === "open") {
-            console.log("✅ Connected")
+            console.log("✅ WhatsApp Connected")
             if (fs.existsSync("qr.png")) fs.unlinkSync("qr.png")
         }
 
         if (connection === "close") {
             const reason = lastDisconnect?.error?.output?.statusCode
 
-            // ❌ logout হলে restart করবে না
-            if (reason === DisconnectReason.loggedOut) {
-                started = false
-                sock = null
-                return
+            if (reason !== DisconnectReason.loggedOut) {
+                setTimeout(startBot, 5000)
             }
-
-            // 🔁 auto reconnect
-            setTimeout(startBot, 5000)
         }
     })
 
+    // 📥 Incoming messages
     sock.ev.on("messages.upsert", async (m) => {
         try {
             const msg = m.messages[0]
-            if (!msg.message || msg.key.fromMe) return
+            if (!msg.message) return
+
+            if (msg.key.fromMe) return
 
             const sender = msg.key.remoteJid
+
             let number = sender
 
-            if (contacts[sender]) number = contacts[sender]
+            if (contacts[sender]) {
+                number = contacts[sender]
+            }
             else if (sender.includes("@s.whatsapp.net")) {
                 number = sender.split("@")[0]
-                if (number.startsWith("880")) number = "+" + number
-            } else if (sender.includes("@lid")) {
+
+                if (number.startsWith("880")) {
+                    number = "+" + number
+                }
+            }
+            else if (sender.includes("@lid")) {
                 number = "Hidden User"
             }
 
             const text =
                 msg.message.conversation ||
                 msg.message.extendedTextMessage?.text ||
-                "Media"
+                "Media message"
 
             console.log("📩", number, ":", text)
+
             saveMessage(`${number} : ${text}`)
 
-        } catch (e) {}
+            // 🤖 smart reply
+            if (text.toLowerCase() === "hi" || text.toLowerCase() === "hello") {
+                await sock.sendMessage(sender, {
+                    text: "Hello bro 👋"
+                })
+            }
+
+        } catch (err) {
+            console.log(err)
+        }
     })
 
-    started = true
+    resetSleepTimer() // 🔥 start timer
 }
 
-// 😴 AUTO SLEEP
-function resetSleepTimer() {
-    if (sleepTimer) clearTimeout(sleepTimer)
-
-    sleepTimer = setTimeout(() => {
-        console.log("😴 Sleeping...")
-
-        if (sock) {
-            sock.ws.close()
-        }
-
-        process.exit(0) // 🔥 FULL STOP (no CPU)
-    }, 20000) // 20 sec idle
-}
+startBot()
 
 // 🌐 Home
 app.get("/", (req, res) => {
-    res.send("API OK")
+    res.send("WhatsApp API Running ✅")
 })
 
 // 📱 QR
@@ -141,16 +160,18 @@ app.get("/qr", (req, res) => {
     }
 })
 
-// 📩 Send message (MAIN)
+// 📩 Send text
 app.post("/send", async (req, res) => {
     try {
-        await startBot()
-
         if (!sock || !sock.user) {
-            return res.json({ status: false, msg: "Not connected yet" })
+            return res.json({ status: false, msg: "WhatsApp not connected" })
         }
 
         const { number, message } = req.body
+
+        if (!number || !message) {
+            return res.json({ status: false, msg: "number & message required" })
+        }
 
         const jid = number.includes("@s.whatsapp.net")
             ? number
@@ -158,21 +179,27 @@ app.post("/send", async (req, res) => {
 
         await sock.sendMessage(jid, { text: message })
 
-        resetSleepTimer() // 🔥 activity detected
+        resetSleepTimer() // 🔥 activity
 
-        res.json({ status: true, msg: "Sent" })
+        res.json({ status: true, msg: "Message sent" })
 
     } catch (err) {
         res.json({ status: false, error: err.message })
     }
 })
 
-// 📄 Send doc
+// 📄 Send document
 app.post("/send-doc", async (req, res) => {
     try {
-        await startBot()
+        if (!sock || !sock.user) {
+            return res.json({ status: false, msg: "WhatsApp not connected" })
+        }
 
         const { number, url, filename } = req.body
+
+        if (!number || !url) {
+            return res.json({ status: false, msg: "number & url required" })
+        }
 
         const jid = number + "@s.whatsapp.net"
 
@@ -184,31 +211,41 @@ app.post("/send-doc", async (req, res) => {
 
         resetSleepTimer()
 
-        res.json({ status: true })
+        res.json({ status: true, msg: "Document sent" })
 
     } catch (err) {
         res.json({ status: false, error: err.message })
     }
 })
 
-// 🔐 LOGOUT (FULL RESET)
-app.get("/logout", async (req, res) => {
-    try {
-        if (sock) await sock.logout()
-
-        if (fs.existsSync("auth")) {
-            fs.rmSync("auth", { recursive: true, force: true })
-        }
-
-        if (fs.existsSync("qr.png")) fs.unlinkSync("qr.png")
-
-        started = false
-        sock = null
-
-        res.send("✅ লগআউট + session delete done")
-    } catch (e) {
-        res.send("Error")
+// 📜 View messages
+app.get("/messages", (req, res) => {
+    if (fs.existsSync("messages.txt")) {
+        const data = fs.readFileSync("messages.txt", "utf-8")
+        res.send(`<pre>${data}</pre>`)
+    } else {
+        res.send("No messages yet")
     }
 })
 
-app.listen(3000, () => console.log("Server running"))
+// 🧹 Clear
+app.get("/clear", (req, res) => {
+    fs.writeFileSync("messages.txt", "")
+    res.send("Messages cleared ✅")
+})
+
+// 🔐 Logout
+app.get("/logout", async (req, res) => {
+    if (sock) await sock.logout()
+    if (fs.existsSync("auth")) fs.rmSync("auth", { recursive: true, force: true })
+    res.send("Logged out")
+})
+
+// 🧪 Check
+app.get("/check", (req, res) => {
+    res.send("NEW CODE ACTIVE")
+})
+
+app.listen(3000, () => {
+    console.log("Server running on port 3000")
+})
