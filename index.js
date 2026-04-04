@@ -33,7 +33,21 @@ function saveMessage(text) {
 
     fs.writeFileSync("messages.txt", lines.join("\n") + "\n")
 }
+function resetSleepTimer() {
+    if (sleepTimer) clearTimeout(sleepTimer)
 
+    sleepTimer = setTimeout(() => {
+        console.log("😴 Sleeping (safe mode)...")
+
+        if (sock) {
+            try {
+                sock.end() // ✅ clean disconnect
+                sock = null
+            } catch (e) {}
+        }
+
+    }, 15000) // 15 sec idle
+}
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState("auth")
     const { version } = await fetchLatestBaileysVersion()
