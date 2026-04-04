@@ -1,44 +1,25 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
-const express = require('express');
-const app = express();
+const { default: makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys")
 
-app.use(express.json());
+async function startBot() {
+    const { state, saveCreds } = await useMultiFileAuthState("auth")
 
-// WhatsApp Client with session saving (LocalAuth)
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: { headless: true }
-});
+    const sock = makeWASocket({
+        auth: state
+    })
 
-// QR কোড আসলে টার্মিনালে দেখাবে
-client.on('qr', (qr) => {
-    console.log('📱 Scan this QR Code:');
-    qrcode.generate(qr, { small: true });
-});
+    sock.ev.on("creds.update", saveCreds)
 
-// বট প্রস্তুত হলে
-client.on('ready', () => {
-    console.log('✅ WhatsApp is ready!');
-});
+    sock.ev.on("connection.update", (update) => {
+        const { connection, qr } = update
 
-client.initialize();
+        if (qr) {
+            console.log("SCAN QR:", qr)
+        }
 
-// API endpoint: POST /send
-app.post('/send', async (req, res) => {
-    const number = req.body.number;  // দেশের কোড সহ নম্বর, যেমন 88017XXXXXX
-    const message = req.body.message;
-    const chatId = number.includes('@c.us') ? number : number + '@c.us';
+        if (connection === "open") {
+            console.log("✅ Connected")
+        }
+    })
+}
 
-    try {
-        await client.sendMessage(chatId, message);
-        res.json({ status: 'success', to: number });
-    } catch (error) {
-        res.json({ status: 'error', message: error.message });
-    }
-});
-
-// Express server চালু করা
-app.listen(3000, () => {
-    console.log('🚀 Server is running on http://localhost:3000');
-});
+startBot()
