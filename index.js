@@ -16,11 +16,8 @@ let sock = null
 
 async function startBot() {
 
-    // 🔥 force নতুন session (old auth delete)
-    if (fs.existsSync("auth")) {
-        fs.rmSync("auth", { recursive: true, force: true })
-        console.log("Old auth deleted")
-    }
+    // ❌ IMPORTANT: auth delete remove করা হয়েছে
+    // (না হলে বারবার QR scan লাগবে)
 
     const { state, saveCreds } = await useMultiFileAuthState("auth")
     const { version } = await fetchLatestBaileysVersion()
@@ -52,7 +49,7 @@ async function startBot() {
             }
         }
 
-        // 🔁 reconnect system
+        // 🔁 reconnect system (safe)
         if (connection === "close") {
             const reason = lastDisconnect?.error?.output?.statusCode
 
@@ -62,7 +59,7 @@ async function startBot() {
                 console.log("🔁 Reconnecting in 5s...")
                 setTimeout(startBot, 5000)
             } else {
-                console.log("Logged out")
+                console.log("❌ Logged out! Delete auth folder manually")
             }
         }
     })
@@ -84,19 +81,29 @@ app.get("/qr", (req, res) => {
     }
 })
 
-// 📩 Send message API
+// 📩 Send message API (improved)
 app.post("/send", async (req, res) => {
     try {
+        if (!sock) {
+            return res.json({ status: false, msg: "WhatsApp not ready" })
+        }
+
         const { number, message } = req.body
 
         if (!number || !message) {
             return res.json({ status: false, msg: "number & message required" })
         }
 
-        await sock.sendMessage(number + "@s.whatsapp.net", { text: message })
+        const jid = number.includes("@s.whatsapp.net")
+            ? number
+            : number + "@s.whatsapp.net"
+
+        await sock.sendMessage(jid, { text: message })
 
         res.json({ status: true, msg: "Message sent" })
+
     } catch (err) {
+        console.log(err)
         res.json({ status: false, error: err.message })
     }
 })
