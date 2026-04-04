@@ -13,8 +13,7 @@ const app = express()
 app.use(express.json())
 
 let sock = null
-let contacts = {}
-let sleepTimer = null // 🔥 added
+let contacts = {} // 🔥 contact store
 
 // 🧠 message save with limit
 function saveMessage(text) {
@@ -33,23 +32,6 @@ function saveMessage(text) {
     }
 
     fs.writeFileSync("messages.txt", lines.join("\n") + "\n")
-}
-
-// 😴 sleep system
-function resetSleepTimer() {
-    if (sleepTimer) clearTimeout(sleepTimer)
-
-    sleepTimer = setTimeout(() => {
-        console.log("😴 Sleeping...")
-
-        if (sock) {
-            try {
-                sock.ws.close()
-            } catch (e) {}
-        }
-
-        process.exit(0) // FULL STOP
-    }, 15000) // 15 sec idle
 }
 
 async function startBot() {
@@ -94,7 +76,7 @@ async function startBot() {
         }
     })
 
-    // 📥 Incoming messages
+    // 📥 Incoming messages (FINAL PRO VERSION)
     sock.ev.on("messages.upsert", async (m) => {
         try {
             const msg = m.messages[0]
@@ -106,9 +88,12 @@ async function startBot() {
 
             let number = sender
 
+            // ✅ contact priority
             if (contacts[sender]) {
                 number = contacts[sender]
             }
+
+            // ✅ normal number
             else if (sender.includes("@s.whatsapp.net")) {
                 number = sender.split("@")[0]
 
@@ -116,6 +101,8 @@ async function startBot() {
                     number = "+" + number
                 }
             }
+
+            // ⚠️ lid fallback
             else if (sender.includes("@lid")) {
                 number = "Hidden User"
             }
@@ -140,8 +127,6 @@ async function startBot() {
             console.log(err)
         }
     })
-
-    resetSleepTimer() // 🔥 start timer
 }
 
 startBot()
@@ -179,8 +164,6 @@ app.post("/send", async (req, res) => {
 
         await sock.sendMessage(jid, { text: message })
 
-        resetSleepTimer() // 🔥 activity
-
         res.json({ status: true, msg: "Message sent" })
 
     } catch (err) {
@@ -208,8 +191,6 @@ app.post("/send-doc", async (req, res) => {
             mimetype: "application/pdf",
             fileName: filename || "file.pdf"
         })
-
-        resetSleepTimer()
 
         res.json({ status: true, msg: "Document sent" })
 
