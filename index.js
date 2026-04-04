@@ -2,12 +2,14 @@ const express = require("express")
 const app = express()
 
 const { default: makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys")
+const qrcode = require("qrcode-terminal")
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState("auth")
 
     const sock = makeWASocket({
-        auth: state
+        auth: state,
+        printQRInTerminal: false
     })
 
     sock.ev.on("creds.update", saveCreds)
@@ -16,11 +18,17 @@ async function startBot() {
         const { connection, qr } = update
 
         if (qr) {
-            console.log("QR:", qr)
+            console.log("📱 Scan QR নিচে:")
+            qrcode.generate(qr, { small: true })
         }
 
         if (connection === "open") {
-            console.log("✅ Connected")
+            console.log("✅ WhatsApp Connected")
+        }
+
+        if (connection === "close") {
+            console.log("❌ Connection closed, retrying...")
+            startBot()
         }
     })
 }
@@ -28,9 +36,9 @@ async function startBot() {
 startBot()
 
 app.get("/", (req, res) => {
-    res.send("Running")
+    res.send("WhatsApp API Running")
 })
 
 app.listen(3000, () => {
-    console.log("Server running") 
+    console.log("Server running")
 })
