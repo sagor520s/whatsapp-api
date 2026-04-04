@@ -151,6 +151,7 @@ app.post("/send-doc", async (req, res) => {
             document: { url: url },
             mimetype: "application/pdf",
             fileName: filename || "file.pdf"
+            
         })
 
         res.json({ status: true, msg: "Document sent" })
@@ -188,7 +189,9 @@ app.get("/logout", async (req, res) => {
         res.send("Error: " + err.message)
     }
 })
-
+app.get("/check", (req, res) => {
+    res.send("NEW CODE ACTIVE")
+})
 // 🚀 Start server
 app.listen(3000, () => {
     console.log("Server running on port 3000")
