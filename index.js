@@ -26,7 +26,7 @@ function saveMessage(text) {
 
     lines.push(text)
 
-    // 🔥 শুধু last 50 message রাখবে
+    // 🔥 last 50 message only
     if (lines.length > 50) {
         lines = lines.slice(-50)
     }
@@ -50,7 +50,6 @@ async function startBot() {
         const { connection, qr, lastDisconnect } = update
 
         if (qr) {
-            console.log("QR received")
             await QRCode.toFile("qr.png", qr)
         }
 
@@ -61,39 +60,53 @@ async function startBot() {
 
         if (connection === "close") {
             const reason = lastDisconnect?.error?.output?.statusCode
-            console.log("❌ Connection closed")
 
             if (reason !== DisconnectReason.loggedOut) {
                 setTimeout(startBot, 5000)
-            } else {
-                console.log("❌ Logged out")
             }
         }
     })
 
-    // 📥 Incoming messages (FIXED LOOP)
+    // 📥 Incoming messages (FINAL FIXED)
     sock.ev.on("messages.upsert", async (m) => {
         try {
             const msg = m.messages[0]
             if (!msg.message) return
 
-            // ❗ LOOP FIX
+            // ❗ skip bot own message
             if (msg.key.fromMe) return
 
             const sender = msg.key.remoteJid
+
+            // 🔥 number extract
+            let number = sender
+
+            if (sender.includes("@s.whatsapp.net")) {
+                number = sender.split("@")[0]
+            } else if (sender.includes("@lid")) {
+                number = sender.split("@")[0]
+            }
+
+            // 👉 +880 format
+            if (number.startsWith("880")) {
+                number = "+" + number
+            }
+
             const text =
                 msg.message.conversation ||
                 msg.message.extendedTextMessage?.text ||
                 "Media message"
 
-            console.log("📩", sender, ":", text)
+            console.log("📩", number, ":", text)
 
-            // 📝 Save (limited)
-            saveMessage(`${sender} : ${text}`)
+            // 📝 Save clean number
+            saveMessage(`${number} : ${text}`)
 
-            // 🤖 Smart auto reply (spam control)
+            // 🤖 smart reply
             if (text.toLowerCase() === "hi" || text.toLowerCase() === "hello") {
-                await sock.sendMessage(sender, { text: "Hello bro 👋" })
+                await sock.sendMessage(sender, {
+                    text: "Hello bro 👋"
+                })
             }
 
         } catch (err) {
