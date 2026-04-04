@@ -15,10 +15,6 @@ app.use(express.json())
 let sock = null
 
 async function startBot() {
-
-    // ❌ IMPORTANT: auth delete remove করা হয়েছে
-    // (না হলে বারবার QR scan লাগবে)
-
     const { state, saveCreds } = await useMultiFileAuthState("auth")
     const { version } = await fetchLatestBaileysVersion()
 
@@ -33,11 +29,11 @@ async function startBot() {
     sock.ev.on("connection.update", async (update) => {
         const { connection, qr, lastDisconnect } = update
 
-        // ✅ QR PNG generate
+        // 📱 QR generate PNG
         if (qr) {
             console.log("QR received")
             await QRCode.toFile("qr.png", qr)
-            console.log("QR saved")
+            console.log("QR saved as qr.png")
         }
 
         // ✅ Connected
@@ -49,7 +45,7 @@ async function startBot() {
             }
         }
 
-        // 🔁 reconnect system (safe)
+        // 🔁 reconnect
         if (connection === "close") {
             const reason = lastDisconnect?.error?.output?.statusCode
 
@@ -59,7 +55,7 @@ async function startBot() {
                 console.log("🔁 Reconnecting in 5s...")
                 setTimeout(startBot, 5000)
             } else {
-                console.log("❌ Logged out! Delete auth folder manually")
+                console.log("❌ Logged out (delete auth folder manually)")
             }
         }
     })
@@ -67,12 +63,12 @@ async function startBot() {
 
 startBot()
 
-// 🌐 Home
+// 🌐 Home route
 app.get("/", (req, res) => {
     res.send("WhatsApp API Running ✅")
 })
 
-// 📱 QR endpoint
+// 📱 QR route
 app.get("/qr", (req, res) => {
     if (fs.existsSync("qr.png")) {
         res.sendFile(__dirname + "/qr.png")
@@ -81,7 +77,7 @@ app.get("/qr", (req, res) => {
     }
 })
 
-// 📩 Send message API (improved)
+// 📩 Send message API
 app.post("/send", async (req, res) => {
     try {
         if (!sock) {
@@ -108,7 +104,7 @@ app.post("/send", async (req, res) => {
     }
 })
 
-// 🚀 Server start
+// 🚀 Start server
 app.listen(3000, () => {
     console.log("Server running on port 3000")
 })
