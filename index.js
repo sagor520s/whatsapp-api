@@ -13,6 +13,7 @@ const app = express()
 app.use(express.json())
 
 let sock = null
+let contacts = {} // 🔥 contact store
 
 // 🧠 message save with limit
 function saveMessage(text) {
@@ -26,7 +27,6 @@ function saveMessage(text) {
 
     lines.push(text)
 
-    // 🔥 last 50 message only
     if (lines.length > 50) {
         lines = lines.slice(-50)
     }
@@ -45,6 +45,15 @@ async function startBot() {
     })
 
     sock.ev.on("creds.update", saveCreds)
+
+    // 🔥 contacts collect
+    sock.ev.on("contacts.upsert", (data) => {
+        data.forEach(c => {
+            if (c.id) {
+                contacts[c.id] = c.notify || c.name || c.id
+            }
+        })
+    })
 
     sock.ev.on("connection.update", async (update) => {
         const { connection, qr, lastDisconnect } = update
@@ -67,29 +76,35 @@ async function startBot() {
         }
     })
 
-    // 📥 Incoming messages (FINAL FIXED)
+    // 📥 Incoming messages (FINAL PRO VERSION)
     sock.ev.on("messages.upsert", async (m) => {
         try {
             const msg = m.messages[0]
             if (!msg.message) return
 
-            // ❗ skip bot own message
             if (msg.key.fromMe) return
 
             const sender = msg.key.remoteJid
 
-            // 🔥 number extract
             let number = sender
 
-            if (sender.includes("@s.whatsapp.net")) {
-                number = sender.split("@")[0]
-            } else if (sender.includes("@lid")) {
-                number = sender.split("@")[0]
+            // ✅ contact priority
+            if (contacts[sender]) {
+                number = contacts[sender]
             }
 
-            // 👉 +880 format
-            if (number.startsWith("880")) {
-                number = "+" + number
+            // ✅ normal number
+            else if (sender.includes("@s.whatsapp.net")) {
+                number = sender.split("@")[0]
+
+                if (number.startsWith("880")) {
+                    number = "+" + number
+                }
+            }
+
+            // ⚠️ lid fallback
+            else if (sender.includes("@lid")) {
+                number = "Hidden User"
             }
 
             const text =
@@ -99,7 +114,6 @@ async function startBot() {
 
             console.log("📩", number, ":", text)
 
-            // 📝 Save clean number
             saveMessage(`${number} : ${text}`)
 
             // 🤖 smart reply
@@ -195,7 +209,7 @@ app.get("/messages", (req, res) => {
     }
 })
 
-// 🧹 Clear messages
+// 🧹 Clear
 app.get("/clear", (req, res) => {
     fs.writeFileSync("messages.txt", "")
     res.send("Messages cleared ✅")
