@@ -50,7 +50,7 @@ function resetSleepTimer() {
 
         process.exit(0) // FULL STOP
 
-    }, 15000) // 15 sec idle
+    }, 20000) // 15 sec idle
 }
 
 async function startBot() {
