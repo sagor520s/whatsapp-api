@@ -1,34 +1,58 @@
 const express = require("express")
-const app = express()
+const fs = require("fs")
+const QRCode = require("qrcode")
 
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys")
-const qrcode = require("qrcode-terminal")
+const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    DisconnectReason,
+    fetchLatestBaileysVersion
+} = require("@whiskeysockets/baileys")
+
+const app = express()
+app.use(express.json())
+
+let sock = null
 
 async function startBot() {
+
+    // 🔥 force নতুন session (old auth delete)
+    if (fs.existsSync("auth")) {
+        fs.rmSync("auth", { recursive: true, force: true })
+        console.log("Old auth deleted")
+    }
+
     const { state, saveCreds } = await useMultiFileAuthState("auth")
     const { version } = await fetchLatestBaileysVersion()
 
-    const sock = makeWASocket({
+    sock = makeWASocket({
         version,
         auth: state,
-        printQRInTerminal: false,
         browser: ["Railway", "Chrome", "1.0.0"]
     })
 
     sock.ev.on("creds.update", saveCreds)
 
-    sock.ev.on("connection.update", (update) => {
+    sock.ev.on("connection.update", async (update) => {
         const { connection, qr, lastDisconnect } = update
 
+        // ✅ QR PNG generate
         if (qr) {
-            console.log("\n📱 QR CODE:\n")
-            qrcode.generate(qr, { small: true })
+            console.log("QR received")
+            await QRCode.toFile("qr.png", qr)
+            console.log("QR saved")
         }
 
+        // ✅ Connected
         if (connection === "open") {
             console.log("✅ WhatsApp Connected")
+
+            if (fs.existsSync("qr.png")) {
+                fs.unlinkSync("qr.png")
+            }
         }
 
+        // 🔁 reconnect system
         if (connection === "close") {
             const reason = lastDisconnect?.error?.output?.statusCode
 
@@ -36,9 +60,9 @@ async function startBot() {
 
             if (reason !== DisconnectReason.loggedOut) {
                 console.log("🔁 Reconnecting in 5s...")
-                setTimeout(startBot, 5000) // delay add করেছি (important)
+                setTimeout(startBot, 5000)
             } else {
-                console.log("❌ Logged out! Delete auth folder")
+                console.log("Logged out")
             }
         }
     })
@@ -46,10 +70,38 @@ async function startBot() {
 
 startBot()
 
+// 🌐 Home
 app.get("/", (req, res) => {
-    res.send("WhatsApp API Running")
+    res.send("WhatsApp API Running ✅")
 })
 
+// 📱 QR endpoint
+app.get("/qr", (req, res) => {
+    if (fs.existsSync("qr.png")) {
+        res.sendFile(__dirname + "/qr.png")
+    } else {
+        res.send("QR not ready or already scanned")
+    }
+})
+
+// 📩 Send message API
+app.post("/send", async (req, res) => {
+    try {
+        const { number, message } = req.body
+
+        if (!number || !message) {
+            return res.json({ status: false, msg: "number & message required" })
+        }
+
+        await sock.sendMessage(number + "@s.whatsapp.net", { text: message })
+
+        res.json({ status: true, msg: "Message sent" })
+    } catch (err) {
+        res.json({ status: false, error: err.message })
+    }
+})
+
+// 🚀 Server start
 app.listen(3000, () => {
-    console.log("Server running")
+    console.log("Server running on port 3000")
 })
