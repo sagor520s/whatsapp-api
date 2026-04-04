@@ -1,3 +1,6 @@
+const express = require("express")
+const app = express()
+
 const { default: makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys")
 
 async function startBot() {
@@ -17,9 +20,17 @@ async function startBot() {
         }
 
         if (connection === "open") {
-            console.log("✅ Connected")
+            console.log("✅ WhatsApp Connected")
         }
     })
 }
 
 startBot()
+
+app.get("/", (req, res) => {
+    res.send("WhatsApp API Running")
+})
+
+app.listen(3000, () => {
+    console.log("Server running on port 3000")
+})
