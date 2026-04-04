@@ -124,7 +124,7 @@ function resetSleepTimer() {
         }
 
         process.exit(0) // 🔥 FULL STOP (no CPU)
-    }, 10000) // 10 sec idle
+    }, 10000)
 }
 
 // 🌐 Home
