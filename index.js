@@ -13,9 +13,9 @@ const app = express()
 app.use(express.json())
 
 let sock = null
-let contacts = {} // 🔥 contact store
+let contacts = {}
 
-// 🧠 message save with limit
+// 🧠 message save
 function saveMessage(text) {
     let data = ""
 
@@ -33,6 +33,9 @@ function saveMessage(text) {
 
     fs.writeFileSync("messages.txt", lines.join("\n") + "\n")
 }
+
+// 🧠 sleep system
+let sleepTimer = null
 function resetSleepTimer() {
     if (sleepTimer) clearTimeout(sleepTimer)
 
@@ -41,13 +44,15 @@ function resetSleepTimer() {
 
         if (sock) {
             try {
-                sock.end() // ✅ clean disconnect
+                sock.end()
                 sock = null
             } catch (e) {}
         }
 
-    }, 15000) // 15 sec idle
+    }, 15000)
 }
+
+// 🚀 start bot
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState("auth")
     const { version } = await fetchLatestBaileysVersion()
@@ -60,7 +65,7 @@ async function startBot() {
 
     sock.ev.on("creds.update", saveCreds)
 
-    // 🔥 contacts collect
+    // contacts
     sock.ev.on("contacts.upsert", (data) => {
         data.forEach(c => {
             if (c.id) {
@@ -69,6 +74,7 @@ async function startBot() {
         })
     })
 
+    // connection
     sock.ev.on("connection.update", async (update) => {
         const { connection, qr, lastDisconnect } = update
 
@@ -90,34 +96,24 @@ async function startBot() {
         }
     })
 
-    // 📥 Incoming messages (FINAL PRO VERSION)
+    // incoming message
     sock.ev.on("messages.upsert", async (m) => {
         try {
             const msg = m.messages[0]
             if (!msg.message) return
-
             if (msg.key.fromMe) return
 
             const sender = msg.key.remoteJid
-
             let number = sender
 
-            // ✅ contact priority
             if (contacts[sender]) {
                 number = contacts[sender]
-            }
-
-            // ✅ normal number
-            else if (sender.includes("@s.whatsapp.net")) {
+            } else if (sender.includes("@s.whatsapp.net")) {
                 number = sender.split("@")[0]
-
                 if (number.startsWith("880")) {
                     number = "+" + number
                 }
-            }
-
-            // ⚠️ lid fallback
-            else if (sender.includes("@lid")) {
+            } else if (sender.includes("@lid")) {
                 number = "Hidden User"
             }
 
@@ -130,7 +126,6 @@ async function startBot() {
 
             saveMessage(`${number} : ${text}`)
 
-            // 🤖 smart reply
             if (text.toLowerCase() === "hi" || text.toLowerCase() === "hello") {
                 await sock.sendMessage(sender, {
                     text: "Hello bro 👋"
@@ -185,25 +180,28 @@ app.post("/send", async (req, res) => {
     }
 })
 
-// 📄 Send document
+// 📄 Send document (🔥 UPDATED)
 app.post("/send-doc", async (req, res) => {
     try {
         if (!sock || !sock.user) {
             return res.json({ status: false, msg: "WhatsApp not connected" })
         }
 
-        const { number, url, filename } = req.body
+        const { number, url, filename, message } = req.body
 
         if (!number || !url) {
             return res.json({ status: false, msg: "number & url required" })
         }
 
-        const jid = number + "@s.whatsapp.net"
+        const jid = number.includes("@s.whatsapp.net")
+            ? number
+            : number + "@s.whatsapp.net"
 
         await sock.sendMessage(jid, {
             document: { url },
             mimetype: "application/pdf",
-            fileName: filename || "file.pdf"
+            fileName: filename || "file.pdf",
+            caption: message || ""
         })
 
         res.json({ status: true, msg: "Document sent" })
