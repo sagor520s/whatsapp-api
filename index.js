@@ -180,7 +180,7 @@ app.post("/send", async (req, res) => {
     }
 })
 
-// 📄 Send document (🔥 UPDATED)
+// 📄 Send document (🔥 FIXED STABLE VERSION)
 app.post("/send-doc", async (req, res) => {
     try {
         if (!sock || !sock.user) {
@@ -197,14 +197,23 @@ app.post("/send-doc", async (req, res) => {
             ? number
             : number + "@s.whatsapp.net"
 
+        // ✅ 1. document send
         await sock.sendMessage(jid, {
             document: { url },
             mimetype: "application/pdf",
-            fileName: filename || "file.pdf",
-            caption: message || ""
+            fileName: filename || "file.pdf"
         })
 
-        res.json({ status: true, msg: "Document sent" })
+        // ✅ 2. message send (separate)
+        if (message) {
+            await new Promise(r => setTimeout(r, 500))
+
+            await sock.sendMessage(jid, {
+                text: message
+            })
+        }
+
+        res.json({ status: true, msg: "Document + message sent" })
 
     } catch (err) {
         res.json({ status: false, error: err.message })
